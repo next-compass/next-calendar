@@ -27,6 +27,10 @@ button.link{background:none;border:0;color:#2f6fb0;font-size:14px;text-decoratio
 .spin{width:28px;height:28px;border:3px solid #ddd6ca;border-top-color:#17181c;border-radius:50%;animation:s 1s linear infinite;margin:0 auto}
 @keyframes s{to{transform:rotate(360deg)}}
 .show{display:flex}
+.screen{overflow-y:auto;align-items:flex-start}
+.card{margin:auto}
+.howto{background:#fff;border:1px solid #e4ddd0;border-radius:12px;padding:12px 14px;margin:0 0 18px;font-size:13px;line-height:1.9;text-align:left}
+.howto-t{font-weight:700;margin-bottom:2px}
 </style>
 </head>
 <body>
@@ -34,7 +38,7 @@ button.link{background:none;border:0;color:#2f6fb0;font-size:14px;text-decoratio
 
 <div id="login" class="screen"><div class="card">
   <div class="logo">NEXT</div><div class="bar"></div>
-  <p>イベントカレンダーを見るには、<br>運営に登録したGoogleアカウントでログインしてください。</p>
+  <p>イベントカレンダーを見るには、<br>入学時 登録フォームで回答したGoogleアカウントでログインしてください。</p>
   <div id="gbtn"></div>
   <div id="err" class="err"></div>
   <p class="small">ログインは最初の1回だけです。<br>ログイン後に「ホーム画面に追加」すると、次からはタップだけで開けます。</p>
@@ -42,9 +46,24 @@ button.link{background:none;border:0;color:#2f6fb0;font-size:14px;text-decoratio
 
 <div id="denied" class="screen"><div class="card">
   <div class="logo">NEXT</div><div class="bar"></div>
-  <p><b id="demail"></b><br>はまだ名簿に登録されていません。</p>
-  <p class="small">運営に、このGoogleアカウントで登録してもらうよう連絡してください。<br>別のアカウントで登録している場合は、下から切り替えてください。</p>
+  <p><b>このアカウントはまだ登録されていません</b></p>
+  <p><b id="demail"></b></p>
+  <p class="small">入学時 登録フォームにご回答いただいたGoogleアカウントでログインしてください。<br>別のアカウントで回答した場合は、下から切り替えてください。</p>
   <button class="link" id="again">別のアカウントでログイン</button>
+</div></div>
+
+<div id="pending" class="screen"><div class="card">
+  <div class="logo">NEXT</div><div class="bar"></div>
+  <p><b>ご登録ありがとうございます</b></p>
+  <p><span id="pname"></span> さんのご登録を受け付けました。<br>現在、運営で登録内容を確認しています。<br>確認が出来次第、メールでお知らせします。</p>
+  <p class="small">この画面のままホーム画面に追加しておくと、<br>確認後はアイコンを開くだけでカレンダーが表示されます。</p>
+  <div class="howto">
+    <div class="howto-t">ホーム画面への追加</div>
+    <div>iPhone：画面下の共有ボタン →「ホーム画面に追加」</div>
+    <div>Android：右上のメニュー →「ホーム画面に追加」</div>
+  </div>
+  <p class="small">ログイン中：<span id="pemail"></span></p>
+  <button class="link" id="again2">別のアカウントでログイン</button>
 </div></div>
 
 <iframe id="app" title="NEXT イベントカレンダー" allow="clipboard-write"></iframe>
@@ -55,7 +74,7 @@ var CLIENT_ID = '762468814061-ubesa0bmi59orvn34iegif086kq7pk4i.apps.googleuserco
 var STORE = 'next_device';
 
 function $(id){ return document.getElementById(id); }
-function show(id){ ['loading','login','denied'].forEach(function(s){ $(s).classList.toggle('show', s === id); }); $('app').style.display = id === 'app' ? 'block' : 'none'; }
+function show(id){ ['loading','login','denied','pending'].forEach(function(s){ $(s).classList.toggle('show', s === id); }); $('app').style.display = id === 'app' ? 'block' : 'none'; }
 function getDev(){ try { return localStorage.getItem(STORE) || ''; } catch(e){ return ''; } }
 function setDev(v){ try { v ? localStorage.setItem(STORE, v) : localStorage.removeItem(STORE); } catch(e){} }
 
@@ -91,24 +110,39 @@ function onCredential(res){
   show('loading');
   api({ action: 'login', credential: res.credential }).then(function(r){
     if (r.ok) { setDev(r.device); openApp(r.device); }
+    else if (r.reason === 'pending') { setDev(r.device); showPending(r); }
     else if (r.reason === 'not_registered') { $('demail').textContent = r.email; show('denied'); }
     else { startLogin(r.message || 'ログインできませんでした。もう一度お試しください。'); }
   }).catch(function(){ startLogin('通信に失敗しました。もう一度お試しください。'); });
 }
 
-$('again').onclick = function(){
+function showPending(r){
+  $('pname').textContent = r.name || '';
+  $('pemail').textContent = r.email || '';
+  show('pending');
+}
+
+function switchAccount(){
   try { google.accounts.id.disableAutoSelect(); } catch(e){}
   startLogin('');
-};
+}
+$('again').onclick = switchAccount;
+$('again2').onclick = switchAccount;
 
-(function init(){
+function check(){
   var dev = getDev();
   if (!dev) { startLogin(''); return; }
   api({ action: 'check', device: dev }).then(function(r){
     if (r.ok) openApp(dev);
+    else if (r.reason === 'pending') showPending(r);
     else startLogin(r.reason === 'revoked' ? 'もう一度ログインしてください。' : '');
   }).catch(function(){ openApp(dev); });
-})();
+}
+check();
+
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState === 'visible' && $('pending').classList.contains('show')) check();
+});
 
 if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(function(){}); }
 </script>
