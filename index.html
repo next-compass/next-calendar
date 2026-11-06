@@ -4,12 +4,113 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>NEXT イベントカレンダー</title>
+<meta name="theme-color" content="#17181c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NEXT">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
 <style>
-html,body{margin:0;height:100%;overflow:hidden;background:#f5f2ec}
-iframe{position:fixed;top:0;left:0;width:100%;height:100%;height:100dvh;border:0}
+html,body{margin:0;height:100%;overflow:hidden;background:#f5f2ec;color:#17181c;font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+iframe{position:fixed;top:0;left:0;width:100%;height:100%;height:100dvh;border:0;display:none}
+.screen{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;text-align:center}
+.card{max-width:380px;width:100%}
+.logo{font-weight:800;font-size:34px;letter-spacing:.06em}
+.bar{width:44px;height:4px;border-radius:2px;background:#c8553d;margin:10px auto 22px}
+p{line-height:1.8;margin:0 0 18px;font-size:15px}
+.small{font-size:13px;color:#6b6a66}
+#gbtn{display:flex;justify-content:center;min-height:44px;margin:6px 0 14px}
+button.link{background:none;border:0;color:#2f6fb0;font-size:14px;text-decoration:underline;cursor:pointer;padding:6px}
+.err{color:#b23a2a;font-size:14px;min-height:1em}
+.spin{width:28px;height:28px;border:3px solid #ddd6ca;border-top-color:#17181c;border-radius:50%;animation:s 1s linear infinite;margin:0 auto}
+@keyframes s{to{transform:rotate(360deg)}}
+.show{display:flex}
 </style>
 </head>
 <body>
-<iframe src="https://script.google.com/macros/s/AKfycbwTiM4Pbl96GhREDu3NfH0fVRKrVGmdSueOnSGAjA1_ZIg2Ce4nbX7owFGmpoakWSyX/exec?k=350813c9833a4590" title="NEXT イベントカレンダー"></iframe>
+<div id="loading" class="screen show"><div class="card"><div class="logo">NEXT</div><div class="bar"></div><div class="spin"></div></div></div>
+
+<div id="login" class="screen"><div class="card">
+  <div class="logo">NEXT</div><div class="bar"></div>
+  <p>イベントカレンダーを見るには、<br>運営に登録したGoogleアカウントでログインしてください。</p>
+  <div id="gbtn"></div>
+  <div id="err" class="err"></div>
+  <p class="small">ログインは最初の1回だけです。<br>ログイン後に「ホーム画面に追加」すると、次からはタップだけで開けます。</p>
+</div></div>
+
+<div id="denied" class="screen"><div class="card">
+  <div class="logo">NEXT</div><div class="bar"></div>
+  <p><b id="demail"></b><br>はまだ名簿に登録されていません。</p>
+  <p class="small">運営に、このGoogleアカウントで登録してもらうよう連絡してください。<br>別のアカウントで登録している場合は、下から切り替えてください。</p>
+  <button class="link" id="again">別のアカウントでログイン</button>
+</div></div>
+
+<iframe id="app" title="NEXT イベントカレンダー" allow="clipboard-write"></iframe>
+
+<script>
+var EXEC = 'https://script.google.com/macros/s/AKfycbwTiM4Pbl96GhREDu3NfH0fVRKrVGmdSueOnSGAjA1_ZIg2Ce4nbX7owFGmpoakWSyX/exec';
+var CLIENT_ID = '762468814061-ubesa0bmi59orvn34iegif086kq7pk4i.apps.googleusercontent.com';
+var STORE = 'next_device';
+
+function $(id){ return document.getElementById(id); }
+function show(id){ ['loading','login','denied'].forEach(function(s){ $(s).classList.toggle('show', s === id); }); $('app').style.display = id === 'app' ? 'block' : 'none'; }
+function getDev(){ try { return localStorage.getItem(STORE) || ''; } catch(e){ return ''; } }
+function setDev(v){ try { v ? localStorage.setItem(STORE, v) : localStorage.removeItem(STORE); } catch(e){} }
+
+function api(body){
+  return fetch(EXEC, { method: 'POST', body: JSON.stringify(body) }).then(function(r){ return r.json(); });
+}
+
+function openApp(dev){
+  $('app').src = EXEC + '?d=' + encodeURIComponent(dev);
+  show('app');
+}
+
+var gisReady = false;
+function startLogin(msg){
+  setDev('');
+  $('err').textContent = msg || '';
+  show('login');
+  if (gisReady) return;
+  var s = document.createElement('script');
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.async = true;
+  s.onload = function(){
+    gisReady = true;
+    google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCredential, ux_mode: 'popup', itp_support: true, auto_select: false });
+    google.accounts.id.renderButton($('gbtn'), { theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', locale: 'ja', width: 280 });
+  };
+  s.onerror = function(){ $('err').textContent = 'ログイン画面を読み込めませんでした。通信状況を確認して、再読み込みしてください。'; };
+  document.head.appendChild(s);
+}
+
+function onCredential(res){
+  $('err').textContent = '';
+  show('loading');
+  api({ action: 'login', credential: res.credential }).then(function(r){
+    if (r.ok) { setDev(r.device); openApp(r.device); }
+    else if (r.reason === 'not_registered') { $('demail').textContent = r.email; show('denied'); }
+    else { startLogin(r.message || 'ログインできませんでした。もう一度お試しください。'); }
+  }).catch(function(){ startLogin('通信に失敗しました。もう一度お試しください。'); });
+}
+
+$('again').onclick = function(){
+  try { google.accounts.id.disableAutoSelect(); } catch(e){}
+  startLogin('');
+};
+
+(function init(){
+  var dev = getDev();
+  if (!dev) { startLogin(''); return; }
+  api({ action: 'check', device: dev }).then(function(r){
+    if (r.ok) openApp(dev);
+    else startLogin(r.reason === 'revoked' ? 'もう一度ログインしてください。' : '');
+  }).catch(function(){ openApp(dev); });
+})();
+
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(function(){}); }
+</script>
 </body>
 </html>
